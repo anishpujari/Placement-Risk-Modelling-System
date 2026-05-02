@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./model/artifacts:/app/model/artifacts
+    environment:
+      - MODEL_PATH=model/artifacts
+      - DATA_PATH=data
+      - API_PORT=8000
+      - LOG_LEVEL=info
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./model/artifacts:/app/model/artifacts
+    environment:
+      - MODEL_PATH=model/artifacts
+      - DATA_PATH=data
+    command: streamlit run app/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      - api
+    restart: unless-stopped

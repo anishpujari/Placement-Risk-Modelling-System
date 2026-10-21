@@ -22,7 +22,7 @@ env/
 .env
 
 # Data (large files)
-data/placement_10k_final.csv
+data/placement_100k_final.csv
 data/data_quality_report.html
 
 # Model artifacts

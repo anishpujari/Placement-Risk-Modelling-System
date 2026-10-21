@@ -1,6 +1,6 @@
 """
 PlacementAI — Synthetic Dataset Generator
-Generates 10,000 Indian student records with 57 logically correlated columns.
+Generates 100,000 Indian student records with 57 logically correlated columns.
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ fake = Faker("en_IN")
 Faker.seed(42)
 np.random.seed(42)
 
-N = 10_000
+N = 100_000
 
 # ── Reference Tables ──────────────────────────────────────────────────────────
 
@@ -130,7 +130,7 @@ def generate_dataset():
     records = []
 
     for i in range(N):
-        sid = f"STU{i+1:05d}"
+        sid = f"STU{i+1:06d}"
         course = rng.choice(COURSE_TYPES, p=COURSE_PROBS)
         grad_year = int(rng.choice(GRAD_YEARS, p=GRAD_PROBS))
         country = rng.choice(COUNTRIES, p=COUNTRY_PROBS)
@@ -370,8 +370,8 @@ def generate_dataset():
 
     # Save
     out_dir = os.path.dirname(os.path.abspath(__file__))
-    df.to_csv(os.path.join(out_dir, "placement_10k_final.csv"), index=False)
-    df.sample(100, random_state=42).to_csv(os.path.join(out_dir, "placement_10k_sample100.csv"), index=False)
+    df.to_csv(os.path.join(out_dir, "placement_100k_final.csv"), index=False)
+    df.sample(100, random_state=42).to_csv(os.path.join(out_dir, "placement_100k_sample100.csv"), index=False)
     print(f"\nDataset saved to {out_dir}")
     return df
 

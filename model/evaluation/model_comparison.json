@@ -1,0 +1,60 @@
+{
+  "test_size": 34759,
+  "ceiling_accuracy": 0.7973,
+  "results": [
+    {
+      "model": "Always predict Low",
+      "accuracy": 0.5591,
+      "f1_macro": 0.2391,
+      "auc_roc": 0.5,
+      "high_recall": 0.0,
+      "high_precision": 0.0,
+      "fit_seconds": 0.0
+    },
+    {
+      "model": "Logistic regression",
+      "accuracy": 0.7748,
+      "f1_macro": 0.7335,
+      "auc_roc": 0.9172,
+      "high_recall": 0.7353,
+      "high_precision": 0.7285,
+      "fit_seconds": 7.8
+    },
+    {
+      "model": "Decision tree",
+      "accuracy": 0.7493,
+      "f1_macro": 0.7176,
+      "auc_roc": 0.8946,
+      "high_recall": 0.6449,
+      "high_precision": 0.8003,
+      "fit_seconds": 2.8
+    },
+    {
+      "model": "Random forest",
+      "accuracy": 0.778,
+      "f1_macro": 0.746,
+      "auc_roc": 0.9136,
+      "high_recall": 0.703,
+      "high_precision": 0.8187,
+      "fit_seconds": 56.2
+    },
+    {
+      "model": "XGBoost",
+      "accuracy": 0.7871,
+      "f1_macro": 0.7561,
+      "auc_roc": 0.9227,
+      "high_recall": 0.7368,
+      "high_precision": 0.811,
+      "fit_seconds": null
+    },
+    {
+      "model": "XGBoost, tuned (P(high) >= 0.34)",
+      "accuracy": 0.7804,
+      "f1_macro": 0.7445,
+      "auc_roc": 0.9227,
+      "high_recall": 0.8033,
+      "high_precision": 0.7388,
+      "fit_seconds": null
+    }
+  ]
+}

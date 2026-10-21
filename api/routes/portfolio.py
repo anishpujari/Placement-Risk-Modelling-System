@@ -4,6 +4,7 @@ GET /portfolio/summary and GET /student/{student_id}/history
 """
 
 import os
+from functools import lru_cache
 import pandas as pd
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -11,9 +12,10 @@ from api.schemas import PortfolioSummary
 
 router = APIRouter()
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "placement_10k_final.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "placement_100k_final.csv")
 
 
+@lru_cache(maxsize=1)
 def _load_data():
     return pd.read_csv(DATA_PATH)
 

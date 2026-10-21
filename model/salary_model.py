@@ -13,7 +13,7 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "..", "data", "placement_10k_final.csv")
+DATA_PATH = os.path.join(BASE_DIR, "..", "data", "placement_100k_final.csv")
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
 
 PPP_RATES = {"USD": 74, "CAD": 58, "GBP": 105, "AUD": 52}

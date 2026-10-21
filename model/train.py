@@ -14,11 +14,15 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split
+
+from model.ceiling import ceiling_report
+from model.predict import apply_high_threshold
 
 warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "..", "data", "placement_10k_final.csv")
+DATA_PATH = os.path.join(BASE_DIR, "..", "data", "placement_100k_final.csv")
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
 EVAL_DIR = os.path.join(BASE_DIR, "evaluation")
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
@@ -68,6 +72,54 @@ DERIVED_COLS = [
 ]
 
 
+TARGET_HIGH_RECALL = 0.80
+
+
+def fit_model(X, y, verbose=False):
+    """SMOTE-balance the given rows, then fit the XGBoost classifier."""
+    X_res, y_res = SMOTE(random_state=42, k_neighbors=3).fit_resample(X, y)
+    if verbose:
+        print(f"After SMOTE: {len(X_res)} (from {len(X)})")
+    model = XGBClassifier(
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        eval_metric="mlogloss",
+        random_state=42,
+        tree_method="hist",  # CPU-optimized
+        verbosity=0,
+    )
+    model.fit(X_res, y_res, verbose=False)
+    model.n_train_after_smote_ = len(X_res)
+    return model
+
+
+def tune_high_threshold(proba, y_true, high_idx):
+    """Highest P(HIGH) threshold whose validation HIGH recall still meets the target."""
+    best = None
+    for t in np.round(np.arange(0.20, 0.61, 0.01), 2):
+        pred = apply_high_threshold(proba, t, high_idx)
+        recall = ((pred == high_idx) & (y_true == high_idx)).sum() / (y_true == high_idx).sum()
+        if recall >= TARGET_HIGH_RECALL:
+            best = t
+    return float(best) if best is not None else 0.20
+
+
+def evaluate(y_true, y_pred, class_names):
+    report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+    return {
+        "accuracy": round(accuracy_score(y_true, y_pred), 4),
+        "f1_macro": round(f1_score(y_true, y_pred, average="macro"), 4),
+        "f1_weighted": round(f1_score(y_true, y_pred, average="weighted"), 4),
+        "high_risk_recall": round(report["HIGH"]["recall"], 4),
+        "high_risk_precision": round(report["HIGH"]["precision"], 4),
+        "per_class": {n: {k: round(v, 4) for k, v in report[n].items()} for n in class_names},
+        "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
+    }
+
+
 def train():
     print("=" * 60)
     print("PlacementAI - Model Training Pipeline")
@@ -76,6 +128,9 @@ def train():
     # ── Load data ──
     df = pd.read_csv(DATA_PATH)
     print(f"\nLoaded {len(df)} records with {len(df.columns)} columns")
+
+    raw_trend = df["sector_hiring_trend"].copy()
+    raw_target = df[TARGET_COL].copy()
 
     # ── Derived features ──
     df = add_derived_features(df)
@@ -105,80 +160,69 @@ def train():
     y_train, y_test = y[train_mask], y[test_mask]
     print(f"\nTrain: {len(X_train)} | Test: {len(X_test)}")
 
-    # ── SMOTE on training set only ──
-    print("Applying SMOTE...")
-    smote = SMOTE(random_state=42, k_neighbors=3)
-    X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
-    print(f"After SMOTE: {len(X_train_res)} (from {len(X_train)})")
-    print(f"Class dist: {pd.Series(y_train_res).value_counts().to_dict()}")
+    # ── Validation slice (from training years only) for threshold tuning ──
+    X_fit, X_val, y_fit, y_val = train_test_split(
+        X_train, y_train, test_size=0.2, stratify=y_train, random_state=42
+    )
+    high_idx = list(target_le.classes_).index("HIGH")
 
-    # ── Train XGBoost ──
-    print("\nTraining XGBoost classifier...")
-    model = XGBClassifier(
-        n_estimators=300,
-        max_depth=6,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        use_label_encoder=False,
-        eval_metric="mlogloss",
-        random_state=42,
-        tree_method="hist",  # CPU-optimized
-        verbosity=0,
-    )
-    model.fit(
-        X_train_res, y_train_res,
-        eval_set=[(X_test, y_test)],
-        verbose=False,
-    )
+    print("\nFitting on 80% of training years to tune the HIGH-risk threshold...")
+    val_model = fit_model(X_fit, y_fit)
+    high_threshold = tune_high_threshold(val_model.predict_proba(X_val), y_val.values, high_idx)
+    print(f"HIGH-risk threshold: {high_threshold:.2f} (target validation recall {TARGET_HIGH_RECALL:.0%})")
+
+    # ── Final model on all training years ──
+    print("\nTraining final XGBoost classifier on all training years...")
+    model = fit_model(X_train, y_train, verbose=True)
     print("Training complete.")
 
-    # ── Evaluate ──
-    y_pred = model.predict(X_test)
+    # ── Evaluate on the held-out 2025 cohort ──
     y_pred_proba = model.predict_proba(X_test)
+    y_pred_argmax = y_pred_proba.argmax(axis=1)
+    y_pred = apply_high_threshold(y_pred_proba, high_threshold, high_idx)
 
-    accuracy = accuracy_score(y_test, y_pred)
-    f1_macro = f1_score(y_test, y_pred, average="macro")
-    f1_weighted = f1_score(y_test, y_pred, average="weighted")
-
-    # Per-class recall
     class_names = list(target_le.classes_)
-    report = classification_report(y_test, y_pred, target_names=class_names, output_dict=True)
-
-    # AUC-ROC (one-vs-rest)
     try:
         auc_roc = roc_auc_score(y_test, y_pred_proba, multi_class="ovr", average="weighted")
     except Exception:
         auc_roc = 0.0
 
-    # HIGH-risk recall
-    high_idx = list(target_le.classes_).index("HIGH") if "HIGH" in target_le.classes_ else 0
-    high_recall = report.get("HIGH", {}).get("recall", 0.0)
+    tuned = evaluate(y_test, y_pred, class_names)
+    argmax = evaluate(y_test, y_pred_argmax, class_names)
+    # Ceiling needs the original (unencoded) trend and tier labels
+    ceiling = ceiling_report(
+        df.loc[test_mask].assign(sector_hiring_trend=raw_trend[test_mask], risk_tier=raw_target[test_mask])
+    )
 
-    print(f"\n{'='*40}")
-    print(f"  Accuracy:     {accuracy:.4f}")
-    print(f"  F1 (macro):   {f1_macro:.4f}")
-    print(f"  F1 (weighted):{f1_weighted:.4f}")
-    print(f"  AUC-ROC:      {auc_roc:.4f}")
-    print(f"  HIGH Recall:  {high_recall:.4f}")
-    print(f"{'='*40}")
-    print(f"\nClassification Report:")
+    print(f"\n{'='*52}")
+    print(f"  {'':22}{'Argmax':>10}{'Tuned':>10}")
+    for key, label in [("accuracy", "Accuracy"), ("f1_macro", "F1 (macro)"), ("high_risk_recall", "HIGH recall"),
+                       ("high_risk_precision", "HIGH precision")]:
+        print(f"  {label:22}{argmax[key]:>10.4f}{tuned[key]:>10.4f}")
+    print(f"  {'AUC-ROC':22}{auc_roc:>10.4f}")
+    print(f"  {'Accuracy ceiling':22}{ceiling['oracle_accuracy']:>10.4f}")
+    print(f"{'='*52}")
+    print("\nClassification report (tuned decision rule):")
     print(classification_report(y_test, y_pred, target_names=class_names))
 
     # ── Save metrics ──
     metrics = {
-        "accuracy": round(accuracy, 4),
-        "f1_macro": round(f1_macro, 4),
-        "f1_weighted": round(f1_weighted, 4),
+        **{k: tuned[k] for k in ["accuracy", "f1_macro", "f1_weighted", "high_risk_recall", "high_risk_precision"]},
         "auc_roc": round(auc_roc, 4),
-        "high_risk_recall": round(high_recall, 4),
-        "per_class": {name: {k: round(v, 4) for k, v in vals.items()} for name, vals in report.items() if name in class_names},
-        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
-        "train_size": len(X_train_res),
+        "high_threshold": round(high_threshold, 2),
+        "per_class": tuned["per_class"],
+        "confusion_matrix": tuned["confusion_matrix"],
+        "class_order": class_names,
+        "argmax": argmax,
+        "ceiling": ceiling,
+        "train_size": len(X_train),
+        "train_size_after_smote": int(model.n_train_after_smote_),
         "test_size": len(X_test),
     }
     with open(os.path.join(EVAL_DIR, "metrics_report.json"), "w") as f:
         json.dump(metrics, f, indent=2)
+    with open(os.path.join(ARTIFACTS_DIR, "decision_config.json"), "w") as f:
+        json.dump({"high_threshold": round(high_threshold, 2)}, f, indent=2)
 
     # ── Save artifacts ──
     joblib.dump(model, os.path.join(ARTIFACTS_DIR, "xgb_classifier.pkl"))

@@ -16,7 +16,7 @@ class RiskTier(str, Enum):
 # ── Request Models ────────────────────────────────────────────────────────────
 
 class StudentPredictRequest(BaseModel):
-    student_id: str = Field(..., examples=["STU00001"])
+    student_id: str = Field(..., examples=["STU000001"])
     course_type: str = Field(..., examples=["Data Science/AI"])
     destination_country: str = Field(..., examples=["UK"])
     university_name: str = Field(..., examples=["University of Manchester"])

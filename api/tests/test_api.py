@@ -58,7 +58,10 @@ def test_predict_single():
     assert data["student_id"] == "TEST001"
     assert data["risk_tier"] in ["LOW", "MEDIUM", "HIGH"]
     assert "placement_probabilities" in data
-    assert "shap_drivers" in data
+    assert len(data["shap_drivers"]) == 3
+    # The route falls back to a placeholder if SHAP fails; make sure it didn't
+    assert all("unavailable" not in d["feature"].lower() for d in data["shap_drivers"])
+    assert all(d["impact"][0] in "+-" for d in data["shap_drivers"])
 
 
 def test_portfolio_summary():
@@ -70,10 +73,10 @@ def test_portfolio_summary():
 
 
 def test_student_history():
-    r = client.get("/student/STU00001/history")
+    r = client.get("/student/STU000001/history")
     assert r.status_code == 200
     data = r.json()
-    assert data["student_id"] == "STU00001"
+    assert data["student_id"] == "STU000001"
     assert len(data["history"]) > 0
 
 

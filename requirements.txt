@@ -2,7 +2,7 @@
 numpy>=1.24.0,<2.0.0
 pandas>=2.0.0
 scikit-learn>=1.3.0
-xgboost>=2.0.0
+xgboost>=2.0.0,<3.1  # 3.1+ stores per-class base_score, which shap TreeExplainer cannot parse
 imbalanced-learn>=0.11.0
 shap>=0.43.0
 
@@ -18,6 +18,8 @@ python-multipart>=0.0.6
 # Dashboard
 streamlit>=1.28.0
 plotly>=5.18.0
+pyarrow<22  # 22+ requires NumPy 2, but numpy is pinned <2 above
+fpdf2>=2.7  # PDF risk cards
 
 # Profiling
 ydata-profiling>=4.6.0

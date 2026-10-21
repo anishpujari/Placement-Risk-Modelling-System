@@ -8,10 +8,9 @@ import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from api.schemas import FraudCheckResponse, FraudFlag
 from model.fraud_detector import check_fraud, check_fraud_batch
+from api.routes.portfolio import _load_data
 
 router = APIRouter()
-
-DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "placement_10k_final.csv")
 
 
 @router.post("/fraud/flag")
@@ -26,14 +25,14 @@ async def fraud_flag(file: UploadFile = File(None), student_ids: list[str] = Non
         df = pd.read_csv(io.BytesIO(content))
         records = df.to_dict(orient="records")
     elif student_ids:
-        full_df = pd.read_csv(DATA_PATH)
+        full_df = _load_data()
         df = full_df[full_df["student_id"].isin(student_ids)]
         if df.empty:
             raise HTTPException(404, "No matching students found")
         records = df.to_dict(orient="records")
     else:
         # Check entire dataset
-        full_df = pd.read_csv(DATA_PATH)
+        full_df = _load_data()
         records = full_df.to_dict(orient="records")
 
     flagged = check_fraud_batch(records)

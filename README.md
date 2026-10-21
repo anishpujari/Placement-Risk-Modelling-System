@@ -9,10 +9,13 @@ PlacementAI predicts student employability risk 6 months before graduation and g
 ## Features
 
 - **3-Layer AI Engine**: XGBoost placement predictor + Quantile Regression salary forecaster + SHAP explainability
-- **10,000 Synthetic Student Records**: Logically correlated dataset with 52 features
+- **100,000 Synthetic Student Records**: Logically correlated dataset with 52 features
 - **FastAPI REST API**: Single/batch prediction, portfolio summary, fraud detection
-- **Streamlit Dashboard**: 4-page lender-facing UI with interactive visualizations
-- **RBI Compliant**: Risk intelligence only — no automated credit decisions
+- **Streamlit Dashboard**: 5-page lender-facing UI (portfolio, institutes, student lookup, new assessment, model insights)
+- **Detailed SHAP**: Per-student contribution of all 37 features, portfolio-level importance and per-feature dependence plots
+- **PDF risk cards**: One-page printable card per student or applicant, with SHAP drivers
+- **Cost-sensitive decision rule**: HIGH-risk threshold tuned on validation data so fewer risky borrowers are missed
+- **RBI Compliant**: Risk intelligence only, no automated credit decisions
 
 ---
 
@@ -44,6 +47,7 @@ python data/generate_dataset.py
 ```bash
 python -m model.train
 python -m model.salary_model
+python -m model.compare_models   # optional: baseline comparison shown on Model insights
 ```
 
 ### 4. Run API
@@ -91,7 +95,7 @@ docker-compose up --build
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
-    "student_id": "STU00001",
+    "student_id": "STU000001",
     "course_type": "Data Science/AI",
     "destination_country": "UK",
     "university_name": "University of Manchester",
@@ -116,13 +120,40 @@ curl -X POST http://localhost:8000/predict \
 
 ## Model Performance
 
+Evaluated on the held-out 2025 graduating cohort (34,759 students). Training uses the 2023 and 2024 cohorts only.
+
 | Metric | Target | Achieved |
 |--------|--------|----------|
-| Accuracy | >= 84% | 78.5% |
-| F1 Macro | >= 79% | 75.5% |
-| AUC-ROC | >= 0.91 | **0.918** |
-| HIGH Recall | >= 79% | 73.4% |
-| Salary MAPE | <= 11% | **7.5%** |
+| Accuracy | >= 84% | 78.0% (ceiling 79.7%, see below) |
+| F1 Macro | >= 79% | 74.5% |
+| AUC-ROC | >= 0.91 | **0.923** |
+| HIGH Recall | >= 79% | **80.3%** |
+| HIGH Precision | - | 73.9% |
+| Salary MAPE | <= 11% | **7.6%** |
+
+**HIGH-risk threshold.** A student is rated HIGH whenever P(HIGH) >= 0.34, otherwise the more likely of MEDIUM and LOW. The threshold was chosen on a 20% validation slice of the training years (never the test set) as the highest value that keeps HIGH recall at or above 80%. Missing a high-risk borrower costs a lender more than reviewing an extra file. With plain argmax the model scores 78.7% accuracy but only 73.7% HIGH recall.
+
+**Accuracy ceiling.** Each risk tier is derived from a placement score plus random noise (standard deviation about 8.2 points, see `data/generate_dataset.py`). An oracle that knows the exact scoring formula, but not the noise, reaches only **79.7%** accuracy on the test cohort (`model/ceiling.py`). The 84% accuracy target is therefore not reachable on this data by any model. The classifier is within 1 point of the ceiling.
+
+**Baselines.** Same features, training years and SMOTE balancing, scored on the 2025 cohort (`python -m model.compare_models`):
+
+| Model | Accuracy | F1 Macro | AUC-ROC | HIGH Recall |
+|-------|----------|----------|---------|-------------|
+| Always predict LOW | 55.9% | 23.9% | 0.500 | 0.0% |
+| Decision tree | 74.9% | 71.8% | 0.895 | 64.5% |
+| Logistic regression | 77.5% | 73.4% | 0.917 | 73.5% |
+| Random forest | 77.8% | 74.6% | 0.914 | 70.3% |
+| XGBoost | **78.7%** | **75.6%** | **0.923** | 73.7% |
+| XGBoost, tuned for HIGH risk | 78.0% | 74.5% | **0.923** | **80.3%** |
+
+Full metrics, including per-class results and the ceiling report, are written to `model/evaluation/metrics_report.json`. The dashboard's **Model insights** page shows them with the confusion matrix, threshold trade-off, calibration and SHAP importance.
+
+--------|--------|----------|
+| Accuracy | >= 84% | 78.7% |
+| F1 Macro | >= 79% | 75.6% |
+| AUC-ROC | >= 0.91 | **0.923** |
+| HIGH Recall | >= 79% | 73.7% |
+| Salary MAPE | <= 11% | **7.6%** |
 
 ---
 
@@ -131,14 +162,15 @@ curl -X POST http://localhost:8000/predict \
 ```
 placement-ai/
 ├── data/                    # Dataset generation
-├── model/                   # ML pipeline (train, predict, SHAP, salary, fraud)
+├── model/                   # ML pipeline (train, predict, SHAP, salary, fraud, ceiling)
 │   ├── artifacts/           # Trained model files (.pkl)
 │   └── evaluation/          # Metrics + calibration plots
 ├── api/                     # FastAPI REST API
 │   ├── routes/              # Endpoint handlers
 │   └── tests/               # API tests
 ├── app/                     # Streamlit dashboard
-│   └── pages/               # Dashboard pages (4)
+│   ├── ui.py                # Shared theme, charts and SHAP views
+│   └── views/               # Dashboard pages (5)
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
